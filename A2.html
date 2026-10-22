@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Infinity Kaleidoscope Lantern Lamp: A2 proposal</title>
+<style>
+body{margin:0;background:#f4efe6;color:#26231f;font:17px/1.6 Georgia,'Times New Roman',serif}
+main{max-width:960px;margin:0 auto;padding:40px 20px 80px}
+h1{font-size:2.2rem;line-height:1.15;margin:0 0 6px}h2{margin:2.4em 0 .4em;font-size:1.35rem;border-bottom:1.5px solid #26231f;padding-bottom:4px}
+.sub{color:#6b655c;margin:0 0 24px}img{max-width:100%;height:auto;border:1px solid #d8d0c2;border-radius:6px}
+.sketch{background:#101016;border-radius:8px;padding:8px;overflow-x:auto}canvas{display:block;max-width:100%;height:auto!important}
+table{border-collapse:collapse;width:100%;font-size:.95rem}td,th{border:1px solid #d8d0c2;padding:8px 10px;text-align:left;vertical-align:top}th{background:#ebe4d6;width:22%}
+code{background:#ebe4d6;padding:1px 5px;border-radius:3px;font-size:.9em}.note{color:#6b655c;font-size:.92rem}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script></head><body><main>
+<h1>Kaleidoscope Lantern Lamp</h1>
+<p class="sub">A2: Generative Artifact Proposal and Physical Prototypes</p>
+<h2>Idea</h2>
+<p>The idea was to make a desk lamp with different layers of translucent paper inside it. Each layer will have a different pattern cut into it made by different generative algorithms and will be a different colour. The lamp is similar to a kaleidoscope. A single light bulb in the middle will shine through all the layers and show the patterns on the outer surface of the lamp. The layers will move slowly on their own, so the patterns keep changing as they overlap. I want to see how different designs and colours look when they come together, and how the lamp can create something new just by moving the layers around.</p>
+<h2>System</h2>
+<p>I'll use code to generate the cut-out patterns for each layer instead of drawing everything by hand. The basic structure of the lamp and the central light will stay the same, while the patterns, colours and movement can change.
+</p>
+<table
+<tr><th>Fixed</th><td>The lamp base, central light source, outer cover and overall structure.</td></tr>
+<tr><th>Random</th><td>The placement and size of the cut-outs, the colours of the layers and the rotation speed of each layer.</td></tr>
+<tr><th>Algorithms</th><td>Scatter, Poisson-disc sampling, phyllotaxis (golden spiral), loops and randomness To generate variations in the patterns and their arrangement. Each one only decides where the holes go, so any of them can be swapped into any layer.</td></tr>
+<tr><th>Techniques</th><td>Seeded randomness, loops, recursion (fractal rings, tree), rejection, rotation, cellular automata, and unrolling a pattern around a cylinder so it wraps without a seam.</td></tr>
+</table>
+
+<h2>References</h2>
+<p><strong>Sol LeWitt, wall drawings.</strong> The artwork is the instruction, and anyone who follows it makes a different but related drawing. That is how a family of layers can come from one written rule.</p>
+<p><strong>Yayoi Kusama, Infinity Mirror Rooms.</strong> A few lights and mirrors become something that feels endless. I want that feeling of depth from layers of light and colour, without a screen.</p>
+<p><strong>Kaleidoscopes.</strong> I like how simple shapes and colours create more complex patterns when they overlap or reflect. I'm exploring a similar effect using physical layers that move around a light source.</p>
+<h2>Form</h2>
+<p>The final object will be a cylindrical desk lamp, standing on a stable base. A single LED will sit in the centre, surrounded by three or four cylindrical layers made from translucent paper or coloured acetate. Each layer will have a different algorithm-generated cut-out pattern and will rotate slowly using a small motor. The layers will be removable, so I can change their patterns and colours to create different versions of the lamp. A translucent outer cover will help diffuse the light while allowing the patterns to show through. The lamp will also cast coloured shapes onto the desk and nearby walls.</p>
+<h2>First sketches and prototypes</h2>
+<p>The sketch below is a first p5 version. It makes four paper layers from a seed, one algorithm per layer, and turns them at different speeds around an LED so you can see the colours blend. Use the arrow keys to change algorithm, 1, 2 and 3 for the hole count and click for a new seed. The lamp view multiplies the layer colours as a quick imitation of light through paper. It is not a real light simulation.</p>
+<div class="sketch" id="sk"></div>
+</ul>
+</main>
+<script>
+// Infinity Kaleidoscope Lantern Lamp: reference sketch for the A2 proposal.
+// One warm LED in the middle, four translucent paper layers around it. Each layer is cut with its own
+// generated pattern (one algorithm per layer) and turns at its own speed. Light and colour multiply
+// where the layers overlap. Paste this whole file into the p5.js web editor.
+// Keys: arrows = algorithm, 1/2/3 = holes per layer, click = new seed, space = pause, E = export SVG, S = save PNG
+
+const W = 816, H = 300, RAD = 0.82 * 360 / 2;     // W = layer circumference in px, H = layer height
+const PAPERS = ['#ff9ec4', '#ffd86b', '#7cc8ff', '#9ae8a8'];
+const COUNTS = [18, 36, 60];
+const SPEEDS = [W / 1800, -W / 2500, W / 3300, -W / 4200];   // px per frame, alternating direction
+let countIndex = 1, seed = 21, algo = 0, paused = false;
+let offs = [0, 0, 0, 0], layers = [], lists = [], thumbs = [];
+
+// The instruction (LeWitt style): "On a paper layer, cut N holes at random places so that none touch.
+// Each hole is a dot, a bar or a triangle, small to medium. Give each layer one colour of paper and its own seed."
+// Each algorithm below only decides WHERE the holes go. finish() then enforces the rule.
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(random(i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function rp() { const t = random(TWO_PI), r = Math.sqrt(random()) * RAD; return { x: r * Math.cos(t), y: r * Math.sin(t) }; }
+
+const GENS = [
+  { name: 'Scatter', f: n => { const a = []; for (let i = 0; i < 600; i++) a.push(rp()); return a; } },
+  { name: 'Poisson-disc', f: n => {
+    const a = [];
+    for (let i = 0; i < n + 8; i++) {
+      let best = null, bd = -1;
+      for (let k = 0; k < 14; k++) {
+        const p = rp(); let m = 1e9;
+        for (const o of a) m = Math.min(m, dist(p.x, p.y, o.x, o.y));
+        if (m > bd) { bd = m; best = { x: p.x, y: p.y, s: random(6, 13) }; }
+      }
+      a.push(best);
+    }
+    return a; } },
+  { name: 'Phyllotaxis', f: n => {
+    const a = [], o = random(TWO_PI);
+    for (let i = 1; i <= n; i++) { const r = RAD * Math.sqrt(i / n), t = i * 2.39996 + o; a.push({ x: r * Math.cos(t), y: r * Math.sin(t), s: random(6, 12) }); }
+    return a; } },
+  { name: 'Fractal rings', f: n => {
+    const a = [], q = [{ x: 0, y: 0, d: 0 }], o = random(TWO_PI);
+    while (q.length) {
+      const p = q.shift();
+      a.push({ x: p.x, y: p.y, s: [15, 9, 6][p.d] });
+      if (p.d < 2) {
+        const rr = RAD * 0.38 * Math.pow(0.5, p.d);
+        for (let k = 0; k < 6; k++) { const t = o + k * Math.PI / 3 + p.d * Math.PI / 6; q.push({ x: p.x + rr * Math.cos(t), y: p.y + rr * Math.sin(t), d: p.d + 1 }); }
+      }
+    }
+    return a; } },
+  { name: 'Sierpinski', f: n => {
+    const a = [], o = random(TWO_PI);
+    const v = [0, 1, 2].map(k => ({ x: RAD * Math.cos(o + k * TWO_PI / 3), y: RAD * Math.sin(o + k * TWO_PI / 3) }));
+    let x = 0, y = 0;
+    for (let i = 0; i < 1500; i++) { const w = v[Math.floor(random(3))]; x = (x + w.x) / 2; y = (y + w.y) / 2; if (i > 8) a.push({ x, y, s: random(4, 8) }); }
+    return a; } },
+  { name: 'Branching tree', f: n => {
+    const a = [], o = random(TWO_PI);
+    const g = (x, y, t, l, d) => {
+      const x2 = x + l * Math.cos(t), y2 = y + l * Math.sin(t);
+      a.push({ x: x2, y: y2, d, s: 3 + d * 1.8 });
+      if (d > 0) { g(x2, y2, t - 0.5 - random(0.25), l * 0.74, d - 1); g(x2, y2, t + 0.5 + random(0.25), l * 0.74, d - 1); }
+    };
+    for (let k = 0; k < 5; k++) g(0, 0, o + k * TWO_PI / 5, RAD * 0.3, 5);
+    return a.sort((p, q) => q.d - p.d); } },
+  { name: 'Julia set', f: n => {
+    const a = [], ca = random(TWO_PI), cr = 0.7885 * Math.cos(ca), ci = 0.7885 * Math.sin(ca);
+    for (let i = 0; i < 4000 && a.length < 400; i++) {
+      let zx = random(-1.6, 1.6), zy = random(-1.6, 1.6);
+      const x0 = zx, y0 = zy; let it = 0;
+      while (it < 40 && zx * zx + zy * zy < 16) { const t = zx * zx - zy * zy + cr; zy = 2 * zx * zy + ci; zx = t; it++; }
+      if (it >= 5 && it <= 12) a.push({ x: x0 * RAD / 1.6, y: y0 * RAD / 1.6, s: random(5, 10) });
+    }
+    while (a.length < n * 2) { const p = rp(); a.push({ x: p.x, y: p.y, s: random(5, 10) }); }
+    return a; } },
+  { name: 'Rose curve', f: n => {
+    const a = [], k = Math.floor(random(3, 8)), T = k % 2 ? Math.PI : TWO_PI, o = random(TWO_PI);
+    for (let i = 0; i < n * 4; i++) { const t = T * i / (n * 4), r = RAD * Math.cos(k * t); a.push({ x: r * Math.cos(t + o), y: r * Math.sin(t + o), s: random(5, 10) }); }
+    return a; } },
+  { name: 'Cellular automaton', f: n => {
+    const C = 24, Rw = 7, rule = [30, 90, 110, 54][Math.floor(random(4))], o = random(TWO_PI), a = [];
+    let row = Array.from({ length: C }, () => random() < 0.12 ? 1 : 0);
+    row[Math.floor(random(C))] = 1;
+    for (let r = 0; r < Rw; r++) {
+      row.forEach((c, i) => {
+        if (!c) return;
+        const rr = RAD * (0.15 + 0.85 * r / (Rw - 1)), t = o + i * TWO_PI / C + r * 0.1;
+        a.push({ x: rr * Math.cos(t), y: rr * Math.sin(t), s: random(5, 9) });
+      });
+      row = row.map((_, i) => (rule >> (row[(i + C - 1) % C] * 4 + row[i] * 2 + row[(i + 1) % C])) & 1);
+    }
+    return shuffle(a); } }
+];
+
+
+// The shared rule. Unroll each point (angle, radius) into the flat strip, keep a margin for the glue seam,
+// and reject any hole that touches another one (distance wraps around the seam).
+function finish(raw, n) {
+  const list = [];
+  for (const p of raw) {
+    if (list.length >= n) break;
+    const r = Math.hypot(p.x, p.y);
+    if (r > RAD) continue;
+    const u = (Math.atan2(p.y, p.x) / TWO_PI + 0.5) * W, v = 28 + (H - 56) * (r / RAD) * (r / RAD);
+    if (u < 30 || u > W - 30) continue;
+    const size = p.s || random(7, 16);
+    if (list.some(o => { let dx = Math.abs(u - o.x); dx = Math.min(dx, W - dx); return Math.hypot(dx, v - o.y) < (o.size + size) * 1.4; })) continue;
+    list.push({ x: u, y: v, size, kind: Math.floor(random(3)), ang: random(TWO_PI) });
+  }
+  return list;
+}
+function genStrip(s, n, a) { randomSeed(s); return finish(GENS[a].f(n), n); }
+
+function drawShape(g, s, m) {
+  g.push(); g.translate(s.x, s.y); g.rotate(s.ang);
+  if (s.kind === 0) g.circle(0, 0, s.size * 2 * m);
+  else if (s.kind === 1) { g.rectMode(CENTER); g.rect(0, 0, s.size * 3.2 * m, s.size * 0.7 * m, s.size * 0.35 * m); }
+  else { const rr = s.size * 1.3 * m; g.triangle(0, -rr, rr * 0.866, rr * 0.5, -rr * 0.866, rr * 0.5); }
+  g.pop();
+}
+
+// A paper layer: translucent coloured paper with the holes erased.
+function paintLayer(g, list, col) {
+  g.clear(); g.noStroke();
+  const c = color(col); c.setAlpha(215); g.fill(c); g.rect(0, 0, W, H);
+  g.erase(); for (const s of list) drawShape(g, s, 1.15); g.noErase();
+}
+
+function reseed() {
+  const n = COUNTS[countIndex];
+  for (let i = 0; i < 4; i++) { lists[i] = genStrip(seed + i * 101, n, (algo + i) % GENS.length); paintLayer(layers[i], lists[i], PAPERS[i]); }
+  for (let i = 0; i < 4; i++) paintLayer(thumbs[i], genStrip(seed, n, (algo + i + 4) % GENS.length), PAPERS[i]);
+}
+
+function setup() {
+  pixelDensity(1);
+  const c = createCanvas(960, 560);
+  const holder = document.getElementById('sk');
+  if (holder) c.parent(holder);
+  for (let i = 0; i < 4; i++) { layers.push(createGraphics(W, H)); thumbs.push(createGraphics(W, H)); }
+  reseed();
+}
+
+function label(txt, x, y, c) { noStroke(); fill(c || 215); textSize(12); textAlign(LEFT, TOP); text(txt, x, y); }
+
+// One thin vertical slice of a cylinder layer, seen from the front (th = angle around the lamp).
+function slice(g, th, off, X, Y) {
+  const sw = Math.min(6, Math.max(1, Math.round(1 / Math.max(0.17, Math.cos(th)))));
+  let sx = (((th / TWO_PI) * W + off) % W + W) % W;
+  sx = Math.min(sx, W - sw);
+  drawingContext.drawImage(g.elt, sx, 0, sw, H, X, Y, 1, H);
+}
+
+function lamp(cx, top) {
+  const ctx = drawingContext, Rc = Math.floor(W / TWO_PI), by = top + H;
+  noStroke();
+  for (let i = 5; i >= 0; i--) { fill(255, 190, 110, 8); ellipse(cx, by + 34, 2 * (Rc + 30 + i * 34), 20 + i * 12); }   // warm spill on the desk
+  const gr = ctx.createLinearGradient(0, top, 0, by);                          // the LED column lights the middle most
+  gr.addColorStop(0, 'rgb(150,110,70)'); gr.addColorStop(0.5, 'rgb(255,240,200)'); gr.addColorStop(1, 'rgb(170,120,70)');
+  ctx.fillStyle = gr; ctx.fillRect(cx - Rc, top, 2 * Rc, H);
+  ctx.globalCompositeOperation = 'multiply';                                   // each layer filters the light
+  for (let dx = -Rc; dx <= Rc; dx++) for (let i = 3; i >= 0; i--) {
+    const Rl = Rc * (1 - 0.07 * i);                                            // inner layers are slightly smaller
+    if (Math.abs(dx) < Rl) slice(layers[i], Math.asin(dx / Rl), offs[i], cx + dx, top);
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  for (let dx = -Rc; dx <= Rc; dx++) { fill(0, 200 * Math.pow(1 - Math.cos(Math.asin(dx / Rc)), 0.8)); rect(cx + dx, top, 1, H); }
+  fill(27, 28, 35); ellipse(cx, top, 2 * Rc + 6, 24); rect(cx - Rc - 3, top - 18, 2 * Rc + 6, 14, 6);   // top cap
+  fill(38, 40, 49); rect(cx - Rc - 16, by, 2 * Rc + 32, 34, 8);                // base: motor + electronics
+  fill(30, 32, 40); rect(20, by + 34, 400, 4);
+}
+
+function draw() {
+  background(16, 16, 22);
+  if (!paused) for (let i = 0; i < 4; i++) offs[i] += SPEEDS[i];
+  lamp(220, 80);
+  label('The lamp: four paper layers, four speeds, one LED', 40, 500, 215);
+  label('arrows: algorithm   1/2/3: holes   click: new seed   space: pause   E: SVG   S: PNG', 40, 524, 150);
+  const x0 = 470;
+  for (let i = 0; i < 4; i++) {
+    const x = x0 + (i % 2) * 240, y = 52 + Math.floor(i / 2) * 118;
+    label('Layer ' + (i + 1) + ': ' + GENS[(algo + i) % GENS.length].name + (SPEEDS[i] > 0 ? ' (moves left)' : ' (moves right)'), x, y - 18, 215);
+    noStroke(); fill(236, 230, 218); rect(x, y, 228, 84, 3); image(layers[i], x, y, 228, 84);
+  }
+  label('Seed ' + seed + ', ' + COUNTS[countIndex] + ' holes per layer. One cut file per layer.', x0, 280, 170);
+  ['1  light passes through the cut-outs', '2  layers turn at different speeds', '3  shapes overlap, merge and break apart', '4  new patterns keep appearing']
+    .forEach((t, i) => label(t, x0, 310 + i * 16, 190));
+  label('Other algorithms, same seed:', x0, 392, 215);
+  for (let i = 0; i < 4; i++) {
+    const x = x0 + i * 118;
+    noStroke(); fill(236, 230, 218); rect(x, 414, 112, 41, 2); image(thumbs[i], x, 414, 112, 41);
+    label(GENS[(algo + i + 4) % GENS.length].name.split(' ')[0], x, 460, 170);
+  }
+}
+
+// One SVG sheet with all four layers stacked, ready for a laser or cutting machine (1 px = 0.538 mm, so about 14 cm across).
+function exportSVG() {
+  const f = v => v.toFixed(1), g = H + 20;
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" width="' + f(W * 0.538) + 'mm" height="' + f(4 * g * 0.538) + 'mm" viewBox="0 0 ' + W + ' ' + 4 * g + '" fill="none" stroke="red" stroke-width="0.6">\n';
+  for (let i = 0; i < 4; i++) {
+    const sx = 1 - 0.07 * i;
+    s += '<g transform="translate(0 ' + i * g + ')"><rect width="' + f(W * sx) + '" height="' + H + '"/><g transform="scale(' + sx + ' 1)">';
+    for (const h of lists[i]) {
+      const r = h.size * 1.15, t = 'translate(' + f(h.x) + ' ' + f(h.y) + ') rotate(' + f(h.ang * 180 / Math.PI) + ')';
+      if (h.kind === 0) s += '<circle cx="' + f(h.x) + '" cy="' + f(h.y) + '" r="' + f(r) + '"/>';
+      else if (h.kind === 1) s += '<rect x="' + f(-r * 1.6) + '" y="' + f(-r * 0.35) + '" width="' + f(r * 3.2) + '" height="' + f(r * 0.7) + '" rx="' + f(r * 0.35) + '" transform="' + t + '"/>';
+      else { const q = r * 1.3; s += '<polygon points="0,' + f(-q) + ' ' + f(q * 0.866) + ',' + f(q * 0.5) + ' ' + f(-q * 0.866) + ',' + f(q * 0.5) + '" transform="' + t + '"/>'; }
+    }
+    s += '</g></g>\n';
+  }
+  saveStrings([s + '</svg>'], 'lantern-layers-' + GENS[algo].name.replace(/\s+/g, '-').toLowerCase() + '-' + seed, 'svg');
+}
+
+function mousePressed() {
+  if (mouseX >= 0 && mouseX <= width && mouseY >= 0 && mouseY <= height) { seed = Math.floor(Math.random() * 9000) + 1; reseed(); }
+}
+
+function keyPressed() {
+  if (key === '1') { countIndex = 0; reseed(); }
+  if (key === '2') { countIndex = 1; reseed(); }
+  if (key === '3') { countIndex = 2; reseed(); }
+  if (keyCode === RIGHT_ARROW || keyCode === LEFT_ARROW) { algo = (algo + (keyCode === RIGHT_ARROW ? 1 : GENS.length - 1)) % GENS.length; reseed(); return false; }
+  if (key === ' ') { paused = !paused; return false; }
+  if (key === 'e' || key === 'E') exportSVG();
+  if (key === 's' || key === 'S') saveCanvas('lantern-lamp-' + GENS[algo].name.replace(/\s+/g, '-').toLowerCase() + '-' + seed, 'png');
+}
+</script></body></html>
